@@ -1,0 +1,29 @@
+[providers]
+python = "3.11"
+
+[phases.setup]
+nixPkgs = [
+    "ffmpeg", 
+    "cmake", 
+    "gcc", 
+    "gnumake", 
+    "unzip", 
+    "wget", 
+    "openssl", 
+    "zlib", 
+    "libffi",
+    "pkg-config"
+]
+cmds = [
+    "wget -q https://github.com/axiomatic-systems/Bento4/archive/v1.6.0-639.zip",
+    "unzip v1.6.0-639.zip", 
+    "cd Bento4-1.6.0-639 && mkdir build && cd build && cmake .. && make -j$(nproc)",
+    "cp Bento4-1.6.0-639/build/mp4decrypt /usr/local/bin/ || true",
+    "rm -rf Bento4-1.6.0-639 v1.6.0-639.zip"
+]
+
+[phases.build]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "python3 railway_start.py"

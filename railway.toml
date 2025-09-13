@@ -1,0 +1,13 @@
+# DISABLED: Migrated to Render platform
+# Use render.yaml for Render deployment instead
+# [build]
+# builder = "nixpacks"
+# 
+# [deploy]
+# startCommand = "python3 railway_start.py"
+# restartPolicyType = "always"
+# 
+# [env]
+# # Railway will automatically provide these
+# # Set these in Railway dashboard:
+# # BOT_TOKEN, API_ID, API_HASH, OWNER

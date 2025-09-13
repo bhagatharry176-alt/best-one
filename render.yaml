@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: saini-youtube-bot
+    env: python
+    plan: starter
+    buildCommand: |
+      pip uninstall -y pyrofork pyrogram flask && 
+      pip install --no-cache-dir "flask==2.2.5" "pyrogram==2.0.106" "tgcrypto>=1.2.5" && 
+      pip install --no-deps --no-cache-dir -e . && 
+      python -c "import flask, pyrogram; print('✅ Flask:', flask.__version__, 'Pyrogram:', pyrogram.__version__)"
+    startCommand: python render_start.py
+    envVars:
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11"

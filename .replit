@@ -1,0 +1,42 @@
+modules = ["python-3.11", "bash"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["cargo", "ffmpeg", "ffmpeg-full", "file", "freetype", "geckodriver", "glibcLocales", "gmp", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libuv", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tk", "xcodebuild", "zlib"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "SAINI Bot Fixed"
+
+[[workflows.workflow]]
+name = "SAINI Bot Fixed"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python render_start.py"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 10000
+externalPort = 3000
+
+[deployment]
+deploymentTarget = "vm"
+run = ["python3", "render_start.py"]
