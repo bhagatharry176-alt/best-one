@@ -71,7 +71,7 @@ setuptools==75.7.0
 wheel==0.45.1
 
 # Enhanced YouTube Embedded Video Support Dependencies
-markupsafe==2.0.0
+markupsafe==2.1.1
 selenium==4.15.2
 webdriver-manager==4.0.1
 html5lib==1.1
