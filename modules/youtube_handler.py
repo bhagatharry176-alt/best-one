@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import subprocess
 import asyncio
@@ -13,6 +14,34 @@ from . import globals
 from .utils import cleanup_temp_files, final_cleanup
 
 #==============================================================================================================================
+
+def extract_youtube_urls(text):
+    """Extract YouTube URLs from text using regex"""
+    youtube_patterns = [
+        r'https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+',
+        r'https?://(?:www\.)?youtube\.com/embed/[\w-]+',
+        r'https?://(?:www\.)?youtube-nocookie\.com/embed/[\w-]+',
+        r'https?://youtu\.be/[\w-]+',
+        r'youtube\.com/watch\?v=[\w-]+',
+        r'youtube\.com/embed/[\w-]+',
+        r'youtube-nocookie\.com/embed/[\w-]+',
+        r'youtu\.be/[\w-]+'
+    ]
+    
+    urls = []
+    for pattern in youtube_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        urls.extend(matches)
+    
+    return urls
+
+def sanitize_filename(filename):
+    """Sanitize filename to prevent command injection and file system issues"""
+    # Remove shell metacharacters and problematic characters
+    sanitized = re.sub(r'[<>:"/\\|?*\'"`$;&(){}[\]]', '', filename)
+    # Replace spaces with underscores and limit length
+    sanitized = sanitized.replace(' ', '_')[:100]
+    return sanitized
 
 async def cookies_handler(client: Client, m: Message):
     editable = await m.reply_text(
@@ -79,11 +108,26 @@ async def ytm_handler(bot: Client, m: Message):
         try:
             with open(x, "r") as f:
                 content = f.read()
-            content = content.split("\n")
+            
+            # Extract YouTube URLs from the content using regex
+            youtube_urls = extract_youtube_urls(content)
             links = []
-            for i in content:
-                links.append(i.split("://", 1))
+            
+            for url in youtube_urls:
+                # Ensure URL has protocol
+                if not url.startswith('http'):
+                    url = 'https://' + url
+                
+                # Split into protocol and rest for compatibility with existing code
+                if "://" in url:
+                    parts = url.split("://", 1)
+                    links.append(parts)
+            
             os.remove(x)
+            
+            if not links:
+                await m.reply_text("**No valid YouTube URLs found in the file.**")
+                return
         except:
              await m.reply_text("**Invalid file input.**")
              os.remove(x)
@@ -112,10 +156,25 @@ async def ytm_handler(bot: Client, m: Message):
     
     elif input.text:
         content = input.text.strip()
-        content = content.split("\n")
+        
+        # Extract YouTube URLs from the content using regex
+        youtube_urls = extract_youtube_urls(content)
         links = []
-        for i in content:
-            links.append(i.split("://", 1))
+        
+        for url in youtube_urls:
+            # Ensure URL has protocol
+            if not url.startswith('http'):
+                url = 'https://' + url
+            
+            # Split into protocol and rest for compatibility with existing code
+            if "://" in url:
+                parts = url.split("://", 1)
+                links.append(parts)
+        
+        if not links:
+            await m.reply_text("**No valid YouTube URLs found in the text.**")
+            return
+            
         count = 1
         arg = 1
         await editable.delete()
@@ -131,21 +190,63 @@ async def ytm_handler(bot: Client, m: Message):
                 globals.processing_request = False
                 globals.cancel_requested = False
                 return
-            Vxy = links[i][1].replace("www.youtube-nocookie.com/embed", "youtu.be")
+            # Handle embedded YouTube links properly
+            link_part = links[i][1]
+            
+            # Handle various embedded YouTube formats
+            if "youtube.com/embed/" in link_part or "youtube-nocookie.com/embed/" in link_part:
+                # Extract video ID from embed URL
+                if "/embed/" in link_part:
+                    video_id = link_part.split("/embed/")[1].split("?")[0].split("&")[0]
+                    Vxy = f"youtu.be/{video_id}"
+                else:
+                    Vxy = link_part
+            elif "watch?v=" in link_part:
+                # Regular YouTube watch URL
+                Vxy = link_part
+            elif "youtu.be/" in link_part:
+                # Already shortened URL
+                Vxy = link_part
+            else:
+                # Handle other cases or fallback
+                Vxy = link_part.replace("www.youtube-nocookie.com/embed", "youtu.be")
+            
             url = "https://" + Vxy
-            oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
-            response = requests.get(oembed_url)
-            audio_title = response.json().get('title', 'YouTube Video')
+            
+            # Improved error handling for oEmbed
+            try:
+                oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+                response = requests.get(oembed_url, timeout=10)
+                if response.status_code == 200:
+                    audio_title = response.json().get('title', 'YouTube Video')
+                else:
+                    audio_title = 'YouTube Video'
+            except Exception:
+                audio_title = 'YouTube Video'
+            
             audio_title = audio_title.replace("_", " ")
-            name = f'{audio_title[:60]} {CREDIT}'        
+            # Sanitize filename to prevent command injection
+            safe_title = sanitize_filename(audio_title)
+            name = f'{safe_title[:60]}_{CREDIT}'        
             name1 = f'{audio_title} {CREDIT}'
 
             if "youtube.com" in url or "youtu.be" in url:
                 prog = await m.reply_text(f"<i><b>Audio Downloading</b></i>\n<blockquote><b>{str(count).zfill(3)}) {name1}</b></blockquote>")
-                cmd = f'yt-dlp -x --audio-format mp3 --cookies {cookies_file_path} "{url}" -o "{name}.mp3"'
-                print(f"Running command: {cmd}")
-                os.system(cmd)
-                if os.path.exists(f'{name}.mp3'):
+                
+                # Use subprocess.run instead of os.system for security
+                cmd = ['yt-dlp', '-x', '--audio-format', 'mp3', '--cookies', cookies_file_path, url, '-o', f'{name}.mp3']
+                print(f"Running command: {' '.join(cmd)}")
+                
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                    success = result.returncode == 0
+                except subprocess.TimeoutExpired:
+                    success = False
+                    print("yt-dlp command timed out")
+                except Exception as e:
+                    success = False
+                    print(f"Error running yt-dlp: {e}")
+                if success and os.path.exists(f'{name}.mp3'):
                     await prog.delete(True)
                     print(f"File {name}.mp3 exists, attempting to send...")
                     try:
@@ -153,11 +254,12 @@ async def ytm_handler(bot: Client, m: Message):
                         os.remove(f'{name}.mp3')
                         count+=1
                     except Exception as e:
-                        await m.reply_text(f'⚠️**Downloading Failed**⚠️\n**Name** =>> `{str(count).zfill(3)} {name1}`\n**Url** =>> {url}', disable_web_page_preview=True)
+                        await m.reply_text(f'⚠️**Upload Failed**⚠️\n**Name** =>> `{str(count).zfill(3)} {name1}`\n**Url** =>> {url}', disable_web_page_preview=True)
                         count+=1
                 else:
                     await prog.delete(True)
-                    await m.reply_text(f'⚠️**Downloading Failed**⚠️\n**Name** =>> `{str(count).zfill(3)} {name1}`\n**Url** =>> {url}', disable_web_page_preview=True)
+                    error_msg = result.stderr if 'result' in locals() and result.stderr else "Unknown error"
+                    await m.reply_text(f'⚠️**Download Failed**⚠️\n**Name** =>> `{str(count).zfill(3)} {name1}`\n**Url** =>> {url}\n**Error** =>> {error_msg[:100]}...', disable_web_page_preview=True)
                     count+=1
                                
     except Exception as e:
